@@ -85,12 +85,7 @@ class ClassWithLevel(NamedTuple):
     level: int
     class_: CharacterClass
 
-    @property
-    def hitdie_str(self):
-        return f"{self.level}d{self.class_.hit_dice}"
 
-
-# TODO: Adicionar Teste de Resistencia
 class Character:
     def __init__(
         self,
@@ -145,7 +140,7 @@ class Character:
     def proficiency(self) -> int:
         return math.ceil((self.total_level / 4) + 1)
 
-    def calc_hp(self, die: int, quantity: int, first_level: bool) -> float:
+    def _calc_hp(self, die: int, quantity: int, first_level: bool) -> float:
         die_value = die if first_level else (die / 2) + 1
         return (die_value + self.ability.constitution_mod) * quantity
 
@@ -154,14 +149,19 @@ class Character:
         total = 0
         first_level = True
         for level, class_ in self.classes:
-            total += self.calc_hp(class_.hit_dice, level, first_level)
+            total += self._calc_hp(class_.hit_dice, level, first_level)
             first_level = False
 
         return int(total)
 
     # FIX: Juntar dados da mesma categoria
-    def get_hitdice(self) -> List[str]:
-        return [cl.hitdie_str for cl in self.classes]
+    def get_hitdices(self) -> List[str]:
+        dices = {}
+        for cl in self.classes:
+            dices[f"d{cl.class_.hit_dice}"] = (
+                dices.get(f"d{cl.class_.hit_dice}", 0) + cl.level
+            )
+        return [f"{die_count}d{die_value}" for die_value, die_count in dices.items()]
 
     def get_save_throw_modifier(self, save_throw: Ability) -> int:
         ability_mod = {
@@ -303,7 +303,7 @@ if __name__ == "__main__":
     print(char.name)
     print(char.total_level)
     print(char.proficiency)
-    print(char.get_hitdice())
+    print(char.total_hp)
 
     for ability in Ability:
         print(char.ability._sum_scores(ability))
