@@ -2,7 +2,13 @@ import math
 from enum import Enum
 from typing import List, NamedTuple, Set
 
-from ability_score import Ability, AbilityScores, ComponentScore, RacialBonus, ScoreBase
+from ability_score import (
+    Ability,
+    AbilityBonus,
+    BaseAbilities,
+    BonusType,
+    CharacterStats,
+)
 
 
 class CharacterClass(Enum):
@@ -91,7 +97,7 @@ class Character:
         self,
         name: str,
         classes: List[ClassWithLevel],
-        ability: AbilityScores,
+        ability: CharacterStats,
         save_throws: List[Ability] = None,
         skills: List[Skill] = None,
         expertise_skills: Set[Skill] = None,
@@ -107,7 +113,7 @@ class Character:
             raise ValueError(
                 "Classes must be a non-empty list of ClassLevel with positive levels"
             )
-        if not isinstance(ability, AbilityScores):
+        if not isinstance(ability, CharacterStats):
             raise ValueError("Ability must be a CharacterAbility instance")
 
         if save_throws and not all(isinstance(s, Ability) for s in save_throws):
@@ -142,7 +148,7 @@ class Character:
 
     def _calc_hp(self, die: int, quantity: int, first_level: bool) -> float:
         die_value = die if first_level else (die / 2) + 1
-        return (die_value + self.ability.constitution_mod) * quantity
+        return (die_value + self.ability.modifier(Ability.CONSTITUTION)) * quantity
 
     @property
     def total_hp(self) -> int:
@@ -154,7 +160,6 @@ class Character:
 
         return int(total)
 
-    # FIX: Juntar dados da mesma categoria
     def get_hitdices(self) -> List[str]:
         dices = {}
         for cl in self.classes:
@@ -163,29 +168,13 @@ class Character:
             )
         return [f"{die_count}d{die_value}" for die_value, die_count in dices.items()]
 
-    def get_save_throw_modifier(self, save_throw: Ability) -> int:
-        ability_mod = {
-            Ability.STRENGTH: self.ability.strength_mod,
-            Ability.DEXTERITY: self.ability.dexterity_mod,
-            Ability.CONSTITUTION: self.ability.constitution_mod,
-            Ability.INTELLIGENCE: self.ability.intelligence_mod,
-            Ability.WISDOM: self.ability.wisdom_mod,
-            Ability.CHARISMA: self.ability.charisma_mod,
-        }[save_throw]
-        proficiency_bonus = self.proficiency * (
-            1 if save_throw in self.save_throws else 0
-        )
+    def get_save_throw_modifier(self, ability: Ability) -> int:
+        ability_mod = self.ability.modifier(ability)
+        proficiency_bonus = self.proficiency * (1 if ability in self.save_throws else 0)
         return ability_mod + proficiency_bonus
 
     def get_skill_modifier(self, skill: Skill) -> int:
-        ability_mod = {
-            Ability.STRENGTH: self.ability.strength_mod,
-            Ability.DEXTERITY: self.ability.dexterity_mod,
-            Ability.CONSTITUTION: self.ability.constitution_mod,
-            Ability.INTELLIGENCE: self.ability.intelligence_mod,
-            Ability.WISDOM: self.ability.wisdom_mod,
-            Ability.CHARISMA: self.ability.charisma_mod,
-        }[skill.ability]
+        ability_mod = self.ability.modifier(skill.ability)
         proficiency_bonus = self.proficiency * (
             2 if skill in self.expertise_skills else 1 if skill in self.skills else 0
         )
@@ -206,7 +195,7 @@ class CharacterBuilder:
     def __init__(self):
         self._name: str | None = None
         self._classes: list[ClassWithLevel] = []
-        self._ability: AbilityScores | None = None
+        self._ability: CharacterStats | None = None
         self.__first_class_level: bool = True
         self._save_throws: List[Ability] = []
         self._skills: List[Skill] = []
@@ -240,8 +229,8 @@ class CharacterBuilder:
             self._classes.append(ClassWithLevel(level=level, class_=class_))
         return self
 
-    def with_ability(self, ability: AbilityScores) -> "CharacterBuilder":
-        if not isinstance(ability, AbilityScores):
+    def with_ability(self, ability: CharacterStats) -> "CharacterBuilder":
+        if not isinstance(ability, CharacterStats):
             raise ValueError("Ability must be a CharacterAbility instance")
         self._ability = ability
         return self
@@ -279,9 +268,9 @@ class CharacterBuilder:
 
 
 if __name__ == "__main__":
-    base = ScoreBase(16, 13, 15, 12, 8, 10)
-    racial = RacialBonus(strength=2, dexterity=1)
-    scores = AbilityScores(base, racial)
+    base = BaseAbilities(16, 13, 15, 12, 8, 10)
+    racial = AbilityBonus(bonus_type=BonusType.RACIAL, strength=2, dexterity=1)
+    scores = CharacterStats(base, racial)
 
     builder = CharacterBuilder()
 
@@ -296,8 +285,8 @@ if __name__ == "__main__":
         .build()
     )
 
-    char.ability.increment_attribute(
-        ComponentScore.LEVEL_BONUS, {Ability.CONSTITUTION: 1, Ability.STRENGTH: 1}
+    char.ability.add_bonus(
+        BonusType.LEVEL, {Ability.CONSTITUTION: 1, Ability.STRENGTH: 1}
     )
 
     print(char.name)
@@ -306,7 +295,7 @@ if __name__ == "__main__":
     print(char.total_hp)
 
     for ability in Ability:
-        print(char.ability._sum_scores(ability))
+        print(char.ability.total_score(ability))
     print()
     print("Teste de Resistencia")
     print()
@@ -314,7 +303,7 @@ if __name__ == "__main__":
         emoji = char.get_skill_emoji(ability)
         prof = "*" if ability in char.save_throws else ""
         print(
-            f"{emoji}{ability.attr_name}({char.get_save_throw_modifier(ability):+}) {prof}"
+            f"{emoji}{ability.short_name}({char.get_save_throw_modifier(ability):+}) {prof}"
         )
 
     print()
@@ -330,5 +319,5 @@ if __name__ == "__main__":
             else ("*" if skill in char.skills else "")
         )
         print(
-            f"{emoji} {skill.name} {skill.ability.attr_name[:3]} {skill_mod:+} {prof}"
+            f"{emoji} {skill.name} {skill.ability.short_name[:3]} {skill_mod:+} {prof}"
         )
